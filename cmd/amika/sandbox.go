@@ -2377,9 +2377,71 @@ func appendPresetRuntimeEnv(env []string) []string {
 	return env
 }
 
+var sandboxUpdateCmd = &cobra.Command{
+	Use:   "update <name>",
+	Short: "Update sandbox metadata",
+	Long:  `Update metadata for an existing sandbox (rename, TTL, inactivity timeout, auto-delete timeout).`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
+
+		name := args[0]
+		svc := amika.NewService(amika.Options{})
+
+		req := amika.UpdateSandboxRequest{Name: name}
+		hasUpdate := false
+
+		if cmd.Flags().Changed("name") {
+			newName, _ := cmd.Flags().GetString("name")
+			req.NewName = &newName
+			hasUpdate = true
+		}
+		if cmd.Flags().Changed("ttl") {
+			ttl, _ := cmd.Flags().GetString("ttl")
+			req.TTL = &ttl
+			hasUpdate = true
+		}
+		if cmd.Flags().Changed("inactivity-timeout") {
+			timeout, _ := cmd.Flags().GetString("inactivity-timeout")
+			req.InactivityTimeout = &timeout
+			hasUpdate = true
+		}
+		if cmd.Flags().Changed("auto-delete-timeout") {
+			timeout, _ := cmd.Flags().GetString("auto-delete-timeout")
+			req.AutoDeleteTimeout = &timeout
+			hasUpdate = true
+		}
+
+		if !hasUpdate {
+			return fmt.Errorf("no update flags specified; use --name, --ttl, --inactivity-timeout, or --auto-delete-timeout")
+		}
+
+		result, err := svc.UpdateSandbox(cmd.Context(), req)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Sandbox %q updated successfully\n", result.Sandbox.Name)
+		if req.NewName != nil {
+			fmt.Printf("  Renamed to: %s\n", result.Sandbox.Name)
+		}
+		if req.TTL != nil {
+			fmt.Printf("  TTL: %s\n", result.Sandbox.TTL)
+		}
+		if req.InactivityTimeout != nil {
+			fmt.Printf("  Inactivity timeout: %s\n", result.Sandbox.InactivityTimeout)
+		}
+		if req.AutoDeleteTimeout != nil {
+			fmt.Printf("  Auto-delete timeout: %s\n", result.Sandbox.AutoDeleteTimeout)
+		}
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(sandboxCmd)
 	sandboxCmd.AddCommand(sandboxCreateCmd)
+	sandboxCmd.AddCommand(sandboxUpdateCmd)
 	sandboxCmd.AddCommand(sandboxStartCmd)
 	sandboxCmd.AddCommand(sandboxStopCmd)
 	sandboxCmd.AddCommand(sandboxDeleteCmd)
@@ -2415,6 +2477,12 @@ func init() {
 	sandboxCreateCmd.Flags().String("setup-script", "", "Mount a local script file to /usr/local/etc/amikad/setup/setup.sh in the container (read-only)")
 	sandboxCreateCmd.Flags().Bool("no-setup", false, "Skip the setup script (uses a no-op script instead)")
 	sandboxCreateCmd.Flags().String("branch", "", "Git branch to clone (defaults to repo's default branch)")
+	// Update flags
+	sandboxUpdateCmd.Flags().String("name", "", "New name for the sandbox")
+	sandboxUpdateCmd.Flags().String("ttl", "", "Time-to-live duration (e.g. \"2h\", \"30m\")")
+	sandboxUpdateCmd.Flags().String("inactivity-timeout", "", "Inactivity timeout duration")
+	sandboxUpdateCmd.Flags().String("auto-delete-timeout", "", "Auto-delete timeout for suspended sandboxes")
+
 	sandboxDeleteCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	sandboxDeleteCmd.Flags().Bool("delete-volumes", false, "Also delete associated volumes that are no longer referenced")
 	sandboxDeleteCmd.Flags().Bool("keep-volumes", false, "Keep associated volumes even when only this sandbox references them")
