@@ -277,12 +277,22 @@ var sandboxCreateCmd = &cobra.Command{
 		}
 
 		branch, _ := cmd.Flags().GetString("branch")
+		now := time.Now().UTC()
+		ttlStr, _ := cmd.Flags().GetString("ttl")
+		warnBeforeStr, _ := cmd.Flags().GetString("warn-before")
+		ttlResult, err := sandbox.ComputeTTL(ttlStr, warnBeforeStr, now)
+		if err != nil {
+			return err
+		}
+		expiresAt, warnAt := ttlResult.ExpiresAt, ttlResult.WarnAt
 		info := sandbox.Info{
 			Name:        name,
 			Provider:    provider,
 			ContainerID: containerID,
 			Image:       image,
-			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+			CreatedAt:   now.Format(time.RFC3339),
+			ExpiresAt:   expiresAt,
+			WarnAt:      warnAt,
 			Preset:      preset,
 			Mounts:      runtimeMounts,
 			Env:         envStrs,
@@ -1842,6 +1852,9 @@ func createRemoteSandbox(cmd *cobra.Command, target string) error {
 	// Auto-select Claude credential if one exists.
 	claudeCredentialName := autoSelectClaudeCredential(cmd, client)
 
+	ttlStr, _ := cmd.Flags().GetString("ttl")
+	warnBeforeStr, _ := cmd.Flags().GetString("warn-before")
+
 	req := apiclient.CreateSandboxRequest{
 		Name:                 name,
 		Provider:             "daytona",
@@ -1853,6 +1866,8 @@ func createRemoteSandbox(cmd *cobra.Command, target string) error {
 		SetupScriptText:      setupScriptText,
 		ClaudeCredentialName: claudeCredentialName,
 		Branch:               branch,
+		TTL:                  ttlStr,
+		WarnBefore:           warnBeforeStr,
 	}
 
 	sb, err := client.CreateSandbox(req)
@@ -2425,6 +2440,8 @@ func init() {
 	sandboxCreateCmd.Flags().Bool("no-setup", false, "Skip the setup script (uses a no-op script instead)")
 	sandboxCreateCmd.Flags().String("branch", "", "Git branch to clone (defaults to repo's default branch)")
 	sandboxCreateCmd.Flags().Bool("no-claude-config", false, "Do not mount the ~/.claude/ directory into the sandbox")
+	sandboxCreateCmd.Flags().String("ttl", "", "Time-to-live for the sandbox (e.g. \"2h\", \"30m\")")
+	sandboxCreateCmd.Flags().String("warn-before", "10m", "Duration before expiry to send a warning (default \"10m\")")
 	sandboxDeleteCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	sandboxDeleteCmd.Flags().Bool("delete-volumes", false, "Also delete associated volumes that are no longer referenced")
 	sandboxDeleteCmd.Flags().Bool("keep-volumes", false, "Keep associated volumes even when only this sandbox references them")
